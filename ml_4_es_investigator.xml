@@ -1,0 +1,704 @@
+<form version="1.1">
+  <label>ML Investigator</label>
+  <description>As this is an initial version it is still in experimental stage. It is aimed to help the operator to troubleshoot potential issues with ML detections. This is the Investigator view showing all details about a search and its dependencies.</description>
+  <init>
+    <set token="model_name"></set>
+    <set token="data_model"></set>
+    <set token="search_name">none</set>
+    <set token="model_gen_title"></set>
+    <set token="model_gen_search"></set>
+    <set token="search"></set>
+    <set token="search_description"></set>
+  </init>
+  <search id="full_ml_searches">
+    <query>| rest /servicesNS/-/-/saved/searches 
+| eval is_enabled = if(disabled=0,"Yes","No") 
+| eval is_scheduled_cu = if(is_scheduled=1,"Yes","No") 
+
+| eval ml_search_type=case(search LIKE "%| apply %" OR search LIKE "%|apply %" OR search LIKE "%mltk_findbest%" OR search LIKE "%mltk_apply%", "ml_search_model_apply", search LIKE "% into %" AND search LIKE "%fit %","ml_search_model_gen", search LIKE "%fit %" AND search !="*apply*","ml_search_direct" , search!="*fit*" AND search!="*apply*","normal_search") 
+
+| rex field=search "into (?&lt;ml_model_name&gt;\w+)" 
+| rex field=search "into app:(?&lt;ml_model_name&gt;\w+)" 
+
+| rex field=search "apply (?&lt;ml_model_name&gt;\w+)"
+| rex field=search "apply app:(?&lt;ml_model_name&gt;\w+)"
+| rex field=search "mltk_findbest\(\"app:(?&lt;ml_model_name&gt;\w+)"
+| rex field=search "mltk_apply\(\"app:(?&lt;ml_model_name&gt;\w+)"
+| rex field=search "mltk_apply_upper\(\"app:(?&lt;ml_model_name&gt;\w+)"
+| rex field=search "mltk_apply_lower\(\"app:(?&lt;ml_model_name&gt;\w+)"
+
+| rex field=search "datamodel\W{1,2}(?&lt;datamodel&gt;\w+)"
+| rex field=search "tstats.*?from datamodel=(?&lt;datamodel&gt;\w+)"
+| eval datamodel2=case(match(search, "src_dest_tstats"), mvappend("Network_Traffic", "Intrusion_Detection", "Web"), match(search, "(access_tracker|inactive_account_usage)"), "Authentication", match(search, "malware_operations_tracker"), "Malware", match(search, "(primary_functions|listeningports|localprocesses|services)_tracker"), "Application_State", match(search, "useraccounts_tracker"), "Compute_Inventory")
+| eval datamodel=mvappend(datamodel, datamodel2)
+| eval datamodel=if(datamodel!="",datamodel,"NoDataModelFound")
+
+| table actions ml_search_type ml_model_name datamodel datamodel2 search eai:acl.app eai:acl.owner id is_enabled is_scheduled is_scheduled_cu is_visible next_scheduled_time qualifiedSearch realtime_schedule request.ui_dispatch_app schedule_priority schedule_window splunk_server title description triggered_alert_count updated cron_schedule is_scheduled is_scheduled_cu disabled is_enabled dispatch.earliest_time dispatch.latest_time 
+| search ml_search_type="ml_search_model_apply" 
+
+| join type=outer ml_model_name [| rest /servicesNS/-/-/saved/searches 
+| eval is_enabled_model_gen = if(disabled=0,"Yes","No") 
+| eval is_scheduled_model_gen = if(is_scheduled=1,"Yes","No") 
+
+| eval ml_search_type=case(search LIKE "%| apply %" OR search LIKE "%|apply %" OR search LIKE "%mltk_findbest%" OR search LIKE "%mltk_apply%", "ml_search_model_apply", search LIKE "% into %" AND search LIKE "%fit %","ml_search_model_gen", search LIKE "%fit %" AND search !="*apply*","ml_search_direct" , search!="*fit*" AND search!="*apply*","normal_search") 
+
+| rex field=search "into (?&lt;ml_model_name&gt;\w+)" 
+| rex field=search "into app:(?&lt;ml_model_name&gt;\w+)" 
+
+| rex field=search "apply (?&lt;ml_model_name&gt;\w+)"
+| rex field=search "apply app:(?&lt;ml_model_name&gt;\w+)"
+|rename title as model_gen_title
+|rename search as model_gen_search
+|rename ml_search_type AS type
+| table type is_enabled_model_gen is_scheduled_model_gen ml_model_name model_gen_title model_gen_search
+| search type="ml_search_model_gen" ]
+
+| join type=outer ml_model_name [| listmodels|rename name AS ml_model_name|rename type AS ml_model_type| table ml_model_name , ml_model_type , app]
+
+
+| table actions ml_search_type ml_model_name ml_model_type datamodel title model_gen_title model_gen_search is_enabled_model_gen is_scheduled_model_gen search eai:acl.app eai:acl.owner id is_enabled is_scheduled is_scheduled_cu is_visible next_scheduled_time qualifiedSearch realtime_schedule request.ui_dispatch_app schedule_priority schedule_window splunk_server title description triggered_alert_count updated cron_schedule is_scheduled is_scheduled_cu disabled is_enabled dispatch.earliest_time dispatch.latest_time
+</query>
+    <progress>
+      <condition match="'job.resultCount'&gt; 0">
+        <set token="model_name">$result.ml_model_name$</set>
+        <set token="data_model">$result.datamodel$</set>
+        <set token="search_name">$result.title$</set>
+        <set token="model_gen_title">$result.model_gen_title$</set>
+        <set token="search">$result.search$</set>
+        <set token="search_description">$result.description$</set>
+        <set token="model_gen_search">$result.model_gen_search$</set>
+      </condition>
+      <condition>
+        <unset token="show_html"></unset>
+      </condition>
+    </progress>
+  </search>
+  <search id="mlspl_errors">
+    <query>
+            index=_* source=*mlspl.log  | rex field=_raw "PID\s(?&lt;pid&gt;\w+)"
+| transaction pid maxspan=40s
+| search ERROR $model_name$
+    </query>
+    <earliest>-7d@h</earliest>
+    <latest>now</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <search id="mlspl_search_audit">
+    <query>
+            index=_* sourcetype=audittrail tag=error app!=usage_app savedsearch_name="$search_name$" 
+    </query>
+    <earliest>-7d@h</earliest>
+    <latest>now</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="search_name" searchWhenChanged="true">
+      <label>ML Search name</label>
+      <fieldForLabel>title</fieldForLabel>
+      <fieldForValue>title</fieldForValue>
+      <search base="full_ml_searches">
+        <query>|table title ml_model_name</query>
+      </search>
+      <change>
+        <unset token="form.datamodel"></unset>
+        <unset token="form.model_name"></unset>
+      </change>
+      <choice value="-">-</choice>
+      <default>-</default>
+      <initialValue>-</initialValue>
+    </input>
+    <input type="dropdown" token="datamodel" searchWhenChanged="true">
+      <label>Datamodel</label>
+      <fieldForLabel>datamodel</fieldForLabel>
+      <fieldForValue>datamodel</fieldForValue>
+      <search base="full_ml_searches">
+        <query>|search title="$search_name$"|table datamodel description search model_gen_search </query>
+        <progress>
+          <condition match="'job.resultCount'&gt; 0">
+            <set token="data_model">$result.datamodel$</set>
+            <set token="search_description">$result.description$</set>
+            <set token="search">$result.search$</set>
+            <set token="search_description">$result.description$</set>
+            <set token="model_gen_search">$result.model_gen_search$</set>
+          </condition>
+          <condition>
+            <set token="data_model">NoModelFound</set>
+            <set token="search_description">No Description</set>
+            <set token="search">No search found</set>
+            <set token="search_description">No Search description</set>
+            <set token="model_gen_search">No model search found</set>
+          </condition>
+        </progress>
+      </search>
+    </input>
+    <input type="dropdown" token="model_name" searchWhenChanged="true">
+      <label>Model Name</label>
+      <fieldForLabel>ml_model_name</fieldForLabel>
+      <fieldForValue>ml_model_name</fieldForValue>
+      <search base="full_ml_searches">
+        <query>|search title="$search_name$"|table ml_model_name</query>
+        <progress>
+          <condition match="'job.resultCount'&gt; 0">
+            <set token="model_name">$result.$ml_model_name$</set>
+          </condition>
+        </progress>
+      </search>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+     <h1>$search_name$ </h1>
+     <p>This search relies on <b>$data_model$</b> data model to identify outliers based on the generated ML model <b>$model_name$</b>. The search <b>$model_gen_title$</b> is used to generate the required model.</p>
+     <h3>Correlation Search Description</h3>
+     <pre>$search_description$</pre>
+     <h3>Correlation Search</h3>
+     <pre>$search$</pre>
+     
+     <h3>Model Gen Search</h3>
+     <pre>$model_gen_search$</pre>
+     
+     
+       
+           </html>
+    </panel>
+    <panel>
+      <title>Checks</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true allow_old_summaries=true count from datamodel="$datamodel$"
+|eval message=if(count&gt;0, "OK", "Not OK")
+|eval check_name="Datamodel Availability"
+| table check_name message
+| append 
+
+[search index=_audit sourcetype=audittrail tag=error savedsearch_name="$search_name$" has_error_warn=true
+app!=usage_app
+|stats count as error_count by savedsearch_name
+| eval message = if(error_count&gt;0,"Not OK", "OK")
+|eval check_name="ML Warnings"
+|table check_name message]
+
+|append
+[| rest /servicesNS/admin/Splunk_ML_Toolkit/mltk/list_models count=0 splunk_server=local 
+|search mlspl:model_info.model_name="$model_name$"
+
+| stats count as results
+| fillnull
+|eval message=if(results&gt;0,"OK", "Not OK")
+|eval check_name="ML Model Generated"
+|table check_name message]
+
+|append
+[search index=_* source=*mlspl.log  | rex field=_raw "PID\s(?&lt;pid&gt;\w+)"
+| transaction pid maxspan=40s
+| search ERROR "$model_name$"| timechart count |tail 1|table count
+| stats count as results
+| fillnull
+|eval check_name="ML Errors"
+|eval message=if(results&gt;0,"Not OK", "OK")
+|table check_name message]
+
+|append
+[search index=_audit sourcetype=audittrail tag=error app!=usage_app savedsearch_name="$search_name$" earliest=-7d latest=now
+| timechart count cont=False avg(total_run_time) as avg_time 
+| stats avg(avg_time) as avg_total_time
+
+|eval message=if(avg_total_time&lt;5,"OK", "Not OK")
+|eval check_name="Runtime"
+|table check_name message]</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+        <format type="color" field="message">
+          <colorPalette type="map">{"OK":#53A051,"Not OK":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Execution metrics</title>
+      <chart>
+        <search>
+          <query>index=_* sourcetype=audittrail tag=error savedsearch_name="$search_name$" 
+| timechart count as "# Run" cont=False avg(total_run_time) as "Avg Total runtime" avg(event_count) as "Avg Event count" avg(result_count) as "Avg Results"</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">1</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Actions fired (7d)</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=true count from datamodel=Splunk_Audit.Modular_Actions where Modular_Actions.is_Modular_Action_Invocations=1 AND Modular_Actions.search_name="$search_name$" by _time, Modular_Actions.action_mode, Modular_Actions.action_name Modular_Actions.search_name
+    | `drop_dm_object_name("Modular_Actions")`
+    | eval action_mode=if(action_mode="saved","automated", action_mode), action_name=action_mode+"-"+action_name
+    | timechart cont=FALSE span=1d sum(count) as count by action_name</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>ATT&amp;CK</title>
+      <chart>
+        <search>
+          <query>index=risk |search search_name="$search_name$"
+|stats count by annotations._all</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Risk modifiers</title>
+      <chart>
+        <search>
+          <query>index=risk |search search_name="$search_name$"
+|stats count by risk_object</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>ML Search Configuration View</title>
+      <table>
+        <search base="full_ml_searches">
+          <query>| eval empty_data_model=if(datamodel!="NoDataModelFound","No","Yes")
+| table   title actions ml_model_name ml_model_type  datamodel model_gen_title  is_enabled_model_gen is_scheduled_model_gen is_enabled is_scheduled eai:acl.app updated cron_schedule empty_data_model
+|rename title AS "ML_Search_Name"
+|search ML_Search_Name="$search_name$"
+
+| fields - empty_data_model</query>
+        </search>
+        <option name="count">10</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+        <format type="color" field="is_enabled_model_gen">
+          <colorPalette type="map">{"Yes":#53A051,"No":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="is_scheduled_model_gen">
+          <colorPalette type="map">{"Yes":#53A051,"No":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="is_enabled">
+          <colorPalette type="map">{"Yes":#53A051,"No":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="is_scheduled">
+          <colorPalette type="map">{"0":#F8BE34,"1":#53A051}</colorPalette>
+        </format>
+        <format type="color" field="model_gen_title">
+          <colorPalette type="map"></colorPalette>
+        </format>
+        <drilldown>
+          <link target="_blank">/app/SplunkEnterpriseSecuritySuite/ess_content_management?textFilter=$click.value2$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Model Information</title>
+      <table>
+        <search>
+          <query>
+| rest /servicesNS/admin/Splunk_ML_Toolkit/mltk/list_models count=0 splunk_server=local 
+|search mlspl:model_info.model_name="$model_name$"
+| fields + mlspl:model_info.model_name, eai:appName, disabled, mlspl:model_info.algo_name, mlspl:model_info.params.dist, mlspl:model_info.feature_variables, updated 
+| rename mlspl:model_info.model_name as "Model_Name", eai:appName as "App_Name", "mlspl:model_info.algo_name" as "Algorithm", "mlspl:model_info.params.dist" as "Distribution", "mlspl:model_info.feature_variables" as "Splitby"|transpose
+| rename column as Attributes, "row 1" as Values
+</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Model Summary</title>
+      <table>
+        <search>
+          <query>|summary $model_name$|transpose</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Datamodel Information</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true allow_old_summaries=true count from datamodel="$datamodel$" by _time span=auto
+| stats sparkline(sum(count)) as "Events Over Time", sum(count) as "Total Events"
+|eval datamodel="DM_Splunk_SA_CIM_$datamodel$"
+|join type=outer datamodel [| rest /services/admin/summarization by_tstats=true count=0 
+
+|search summary.id="DM_Splunk_SA_CIM_$datamodel$"
+| rename summary.complete as complete, summary.id as datamodel, sumary.last_error as last_error, summary.latest_time as latest_time ,summary.earliest_time as earliest_time 
+| eval "complete(%)"=round((complete * 100),0) 
+| convert ctime(latest_time) AS latest_time
+| convert ctime(earliest_time) AS earliest_time
+| table datamodel, "complete(%)", last_error, earliest_time,latest_time]
+
+|table datamodel "Events Over Time" "Total Events" "complete(%)", last_error, earliest_time,latest_time|transpose|rename "row 1" AS values</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+        <format field="values" type="sparkline">
+          <option name="type">bar</option>
+          <option name="height">20</option>
+          <option name="chartRangeMin">0</option>
+          <option name="colorMap">
+            <option name="0:1">#D85D3D</option>
+            <option name="1:">#B2D16D</option>
+          </option>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search errors/warnings</title>
+      <table>
+        <search>
+          <query>index=_audit sourcetype=audittrail tag=error (savedsearch_name="$search_name$" AND savedsearch_name!="search*")
+app!=usage_app has_error_warn=true
+|stats count as error_count by savedsearch_name
+| eval gen_errors = if(error_count&gt;0,"Warnings","OK")</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+        <format type="color" field="gen_errors">
+          <colorPalette type="map">{"Warnings":#F1813F,"Errors":#DC4E41}</colorPalette>
+        </format>
+        <drilldown>
+          <link target="_blank">search?q=index%3D_*%20sourcetype%3Daudittrail%20tag%3Derror%20app!%3Dusage_app%20savedsearch_name%3D%22$click.value$%22&amp;earliest=-24h@h&amp;latest=now</link>
+        </drilldown>
+      </table>
+    </panel>
+    <panel>
+      <title>Machine Learning Toolkit Errors with Failed Fit and Apply Searches - Last 7 days</title>
+      <chart>
+        <search base="mlspl_errors">
+          <query>|search  $model_name$| timechart count</query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+    <panel>
+      <title># MLSPL Error (24h)</title>
+      <single>
+        <search base="mlspl_errors">
+          <query>| timechart count|tail 1|table count</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[0,30,70,100]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$error_list_panel_show$">
+      <title>Errors list (24 hours)</title>
+      <event>
+        <search>
+          <query>index=_* source=*mlspl.log  | rex field=_raw "PID\s(?&lt;pid&gt;\w+)"
+| transaction pid maxspan=40s
+| search ERROR $model_name$</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+          <progress>
+            <condition match="'job.resultCount' &gt; 0">
+              <set token="error_list_panel_show">true</set>
+            </condition>
+            <condition>
+              <unset token="error_list_panel_show"></unset>
+            </condition>
+          </progress>
+        </search>
+        <option name="count">5</option>
+        <option name="list.drilldown">none</option>
+        <option name="list.wrap">1</option>
+        <option name="maxLines">5</option>
+        <option name="raw.drilldown">full</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">0</option>
+        <option name="table.drilldown">all</option>
+        <option name="table.sortDirection">asc</option>
+        <option name="table.wrap">1</option>
+        <option name="type">list</option>
+      </event>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Model gen search</title>
+      <event>
+        <search>
+          <query>index=_internal  "ESCU - Baseline of DNS Query Length - MLTK" sourcetype=scheduler</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="list.drilldown">none</option>
+        <option name="list.wrap">1</option>
+        <option name="maxLines">5</option>
+        <option name="raw.drilldown">full</option>
+        <option name="rowNumbers">0</option>
+        <option name="table.drilldown">all</option>
+        <option name="table.sortDirection">asc</option>
+        <option name="table.wrap">1</option>
+        <option name="type">list</option>
+      </event>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <search>
+          <query>index=_internal  "ESCU - Baseline of DNS Query Length - MLTK" sourcetype=scheduler
+|timechart avg(run_time) avg(result_count) by status</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">1</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">1</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+  </row>
+</form>
