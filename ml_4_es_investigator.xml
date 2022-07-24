@@ -323,7 +323,7 @@ app!=usage_app
       <chart>
         <search>
           <query>index=risk |search search_name="$search_name$"
-|stats count by annotations._all</query>
+|stats count by annotations.mitre_attack.mitre_technique</query>
           <earliest>-7d@h</earliest>
           <latest>now</latest>
           <sampleRatio>1</sampleRatio>
@@ -639,16 +639,17 @@ app!=usage_app has_error_warn=true
       <title>Model gen search</title>
       <event>
         <search>
-          <query>index=_internal  "ESCU - Baseline of DNS Query Length - MLTK" sourcetype=scheduler</query>
-          <earliest>-7d@h</earliest>
+          <query>index=_internal  "$model_gen_title$" sourcetype=scheduler</query>
+          <earliest>-24h@h</earliest>
           <latest>now</latest>
           <sampleRatio>1</sampleRatio>
         </search>
-        <option name="count">20</option>
+        <option name="count">5</option>
         <option name="list.drilldown">none</option>
         <option name="list.wrap">1</option>
         <option name="maxLines">5</option>
         <option name="raw.drilldown">full</option>
+        <option name="refresh.display">progressbar</option>
         <option name="rowNumbers">0</option>
         <option name="table.drilldown">all</option>
         <option name="table.sortDirection">asc</option>
@@ -661,7 +662,7 @@ app!=usage_app has_error_warn=true
     <panel>
       <chart>
         <search>
-          <query>index=_internal  "ESCU - Baseline of DNS Query Length - MLTK" sourcetype=scheduler
+          <query>index=_internal  "$model_gen_title$" sourcetype=scheduler
 |timechart avg(run_time) avg(result_count) by status</query>
           <earliest>-7d@h</earliest>
           <latest>now</latest>
@@ -695,6 +696,7 @@ app!=usage_app has_error_warn=true
         <option name="charting.legend.mode">standard</option>
         <option name="charting.legend.placement">right</option>
         <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
         <option name="trellis.enabled">0</option>
         <option name="trellis.scales.shared">1</option>
         <option name="trellis.size">medium</option>
