@@ -148,7 +148,7 @@
       </single>
     </panel>
     <panel>
-      <title># MLSPL Error (24h)</title>
+      <title># MLSPL Error (7d)</title>
       <single>
         <search base="mlspl_errors">
           <query>| timechart span=1d count
@@ -602,7 +602,7 @@
       <title>ML fit with errors/warnings</title>
       <table>
         <search>
-          <query>index=_audit sourcetype=audittrail tag=error savedsearch_name!="" has_error_warn=true
+          <query>index=_audit sourcetype=audittrail tag=error app!="usage_app" savedsearch_name!="" has_error_warn=true
 [| rest  /servicesNS/-/-/saved/searches 
 | eval is_enabled = if(disabled=0,"Yes","No")
 | eval is_scheduled_cu = if(is_scheduled=1,"Yes","No")
@@ -610,9 +610,9 @@
 | table savedsearch_name description search eai:acl.app eai:acl.owner schedule_window cron_schedule is_scheduled is_scheduled_cu is_visible disabled is_enabled dispatch.earliest_time dispatch.latest_time
 |search search="*fit*" OR search="*apply*" eai:acl.app!="SA-Utils"
 |fields savedsearch_name ]
-|stats count as error_count by savedsearch_name
-| eval gen_errors = if(error_count&gt;0,"Warnings","OK")
-|sort - error_count</query>
+|stats count as warning_count by savedsearch_name
+| eval gen_errors = if(warning_count&gt;0,"Warnings","OK")
+|sort - warning_count</query>
           <earliest>-24h@h</earliest>
           <latest>now</latest>
           <sampleRatio>1</sampleRatio>
@@ -628,6 +628,10 @@
         <format type="color" field="error_count">
           <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#FFFFFF"></colorPalette>
           <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="warning_count">
+          <colorPalette type="list">[#118832,#E3723A,#D94E17,#D41F1F,#D41F1F]</colorPalette>
+          <scale type="threshold">0,30,70,100</scale>
         </format>
       </table>
     </panel>
