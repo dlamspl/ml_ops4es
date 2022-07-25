@@ -112,7 +112,7 @@
       <fieldForLabel>datamodel</fieldForLabel>
       <fieldForValue>datamodel</fieldForValue>
       <search base="full_ml_searches">
-        <query>|search title="$search_name$"|table datamodel description search model_gen_search </query>
+        <query>|search title="$search_name$"|table datamodel description search model_gen_title model_gen_search </query>
         <progress>
           <condition match="'job.resultCount'&gt; 0">
             <set token="data_model">$result.datamodel$</set>
@@ -120,6 +120,7 @@
             <set token="search">$result.search$</set>
             <set token="search_description">$result.description$</set>
             <set token="model_gen_search">$result.model_gen_search$</set>
+            <set token="model_gen_title">$result.model_gen_title$</set>
           </condition>
           <condition>
             <set token="data_model">NoModelFound</set>
@@ -680,7 +681,7 @@ app!=usage_app has_error_warn=true
         <option name="charting.axisY2.abbreviation">none</option>
         <option name="charting.axisY2.enabled">0</option>
         <option name="charting.axisY2.scale">inherit</option>
-        <option name="charting.chart">line</option>
+        <option name="charting.chart">area</option>
         <option name="charting.chart.bubbleMaximumSize">50</option>
         <option name="charting.chart.bubbleMinimumSize">10</option>
         <option name="charting.chart.bubbleSizeBy">area</option>
@@ -690,7 +691,7 @@ app!=usage_app has_error_warn=true
         <option name="charting.chart.stackMode">default</option>
         <option name="charting.chart.style">shiny</option>
         <option name="charting.drilldown">none</option>
-        <option name="charting.layout.splitSeries">1</option>
+        <option name="charting.layout.splitSeries">0</option>
         <option name="charting.layout.splitSeries.allowIndependentYRanges">1</option>
         <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
         <option name="charting.legend.mode">standard</option>
