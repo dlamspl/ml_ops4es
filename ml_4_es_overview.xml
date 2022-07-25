@@ -264,9 +264,12 @@
       <chart>
         <search>
           <query>index=_audit sourcetype=audittrail (search="*apply *" OR search="*fit *") fully_completed_search=true search_type=scheduled savedsearch_name!=""
-| stats count as "# Run" avg(total_run_time) as "Avg Total runtime" avg(event_count) as "AvgEventCount" avg(result_count) as "Avg Results" by savedsearch_name
+| stats count as "# Run" avg(total_run_time) as "Avg Total runtime" avg(event_count) as "AvgEventCount" avg(result_count) as "AvgResults" by savedsearch_name
 |eval AvgEventCount=tonumber(AvgEventCount)
+|eval AvgResults=tonumber(AvgResults)
 | eval "Running Status"=if(AvgEventCount=0,"Needs Review","OK")
+| eval "Running Status"=if(AvgResults&gt;30,"Needs Review","OK")
+
 | stats dc(savedsearch_name) by "Running Status"</query>
           <earliest>-7d@h</earliest>
           <latest>now</latest>
@@ -300,6 +303,7 @@
         <option name="charting.legend.mode">standard</option>
         <option name="charting.legend.placement">right</option>
         <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
         <option name="trellis.enabled">0</option>
         <option name="trellis.scales.shared">1</option>
         <option name="trellis.size">medium</option>
@@ -599,7 +603,7 @@
       </chart>
     </panel>
     <panel>
-      <title>ML fit with errors/warnings</title>
+      <title>ML fit with warnings (24h)</title>
       <table>
         <search>
           <query>index=_audit sourcetype=audittrail tag=error app!="usage_app" savedsearch_name!="" has_error_warn=true
