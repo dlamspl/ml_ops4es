@@ -6,7 +6,7 @@
 | eval is_enabled = if(disabled=0,"Yes","No") 
 | eval is_scheduled_cu = if(is_scheduled=1,"Yes","No") 
 
-| eval ml_search_type=case(search LIKE "%| apply %" OR search LIKE "%|apply %" OR search LIKE "%mltk_findbest%" OR search LIKE "%mltk_apply%", "ml_search_model_apply", search LIKE "% into %" AND search LIKE "%fit %","ml_search_model_gen", search!="*fit*" AND search !="*apply*","normal_search", search=="*fit *" AND search !="*apply*","ml_search_direct" ) 
+| eval ml_search_type=case(search LIKE "%| apply %" OR search LIKE "%|apply %" OR search LIKE "%mltk_findbest%" OR search LIKE "%mltk_apply_upper%" OR search LIKE "%mltk_apply_lower%" OR search LIKE "%mltk_apply%", "ml_search_model_apply", search LIKE "% into %" AND search LIKE "%fit %","ml_search_model_gen", search!="*fit*" AND search !="*apply*","normal_search", search=="*fit *" AND search !="*apply*","ml_search_direct" ) 
 
 | rex field=search "into (?&lt;ml_model_name&gt;\w+)" 
 | rex field=search "into app:(?&lt;ml_model_name&gt;\w+)" 
@@ -31,7 +31,7 @@
 | eval is_enabled_model_gen = if(disabled=0,"Yes","No") 
 | eval is_scheduled_model_gen = if(is_scheduled=1,"Yes","No") 
 
-| eval ml_search_type=case(search LIKE "%| apply %" OR search LIKE "%|apply %", "ml_search_model_apply", search LIKE "% into %" AND search LIKE "%fit %","ml_search_model_gen", search!="*fit*" AND search !="*apply*","normal_search", search=="*fit *" AND search !="*apply*","ml_search_direct" ) 
+| eval ml_search_type=case(search LIKE "%| apply %" OR search LIKE "%|apply %" OR search LIKE "%mltk_findbest%" OR search LIKE "%mltk_apply_upper%" OR search LIKE "%mltk_apply_lower%" OR search LIKE "%mltk_apply%", "ml_search_model_apply", search LIKE "% into %" AND search LIKE "%fit %","ml_search_model_gen", search!="*fit*" AND search !="*apply*","normal_search", search=="*fit *" AND search !="*apply*","ml_search_direct" ) 
 
 | rex field=search "into (?&lt;ml_model_name&gt;\w+)" 
 | rex field=search "into app:(?&lt;ml_model_name&gt;\w+)" 
@@ -507,7 +507,7 @@
       <title>ML searches execution metrics (7 days)</title>
       <viz type="parallel_coordinates_app.parallel_coordinates">
         <search>
-          <query>index=_audit sourcetype=audittrail (search="*apply *" OR search="*fit *") fully_completed_search=true search_type=scheduled savedsearch_name!="" savedsearch_name!="search*"
+          <query>index=_audit sourcetype=audittrail (search="*apply *" OR search="*fit *") fully_completed_search=true search_type=scheduled savedsearch_name!="" savedsearch_name!="search*" savedsearch_name!="ds_*"
 | stats count as "# Run" avg(total_run_time) as "Avg runtime" avg(event_count) as "Avg Event count" avg(result_count) as "Avg Results" by savedsearch_name</query>
           <earliest>-7d@h</earliest>
           <latest>now</latest>
@@ -534,7 +534,7 @@
 
 | eval "Running Status"=if(AvgEventCount=0,"Needs Review","OK")
 | eval "#Events"=if(AvgEventCount=0,"No Data","OK")
-| eval "#Results"=if(AvgResults&gt;200,"Needs tuning","OK")
+| eval "#Results"=if(AvgResults&gt;200,"Needs tunning","OK")
 | eval "#ExecutionTime"=if(AvgTotalRuntime&gt;10,"Slow Search","OK")
 | dedup savedsearch_name
 |table savedsearch_name "Running Status" "#Events" "#Results" "#ExecutionTime"
@@ -556,6 +556,9 @@
         </format>
         <format type="color" field="#Events">
           <colorPalette type="map">{"No Data":#F8BE34,"OK":#B6C75A}</colorPalette>
+        </format>
+        <format type="color" field="#Results">
+          <colorPalette type="map">{"Needs tunning":#E3723A}</colorPalette>
         </format>
       </table>
     </panel>
@@ -748,7 +751,7 @@
 |eval alert_type_calculated=if("alert.digest_mode" &gt; "1", "alert","")
 |rename title AS "ML_Search_Name"
 
-|search empty_data_model="$empty_model_token$" ml_model_name="$model_name_search$" actions="$actions_token$"
+|search empty_data_model="$empty_model_token$" ml_model_name="$model_name_search$" actions="$actions_token$" ml_search_type!="ml_search_model_gen" 
 | fields - empty_data_model id alert_type_calculated</query>
         </search>
         <option name="count">5</option>
