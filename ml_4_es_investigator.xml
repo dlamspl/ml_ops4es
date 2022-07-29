@@ -73,6 +73,16 @@
       </condition>
     </progress>
   </search>
+  <search id="mlspl_errors_model">
+    <query>
+            index=_* source=*mlspl.log  | rex field=_raw "PID\s(?&lt;pid&gt;\w+)"
+| transaction pid maxspan=40s
+| search ERROR $search_name$
+    </query>
+    <earliest>-7d@h</earliest>
+    <latest>now</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
   <search id="mlspl_errors">
     <query>
             index=_* source=*mlspl.log  | rex field=_raw "PID\s(?&lt;pid&gt;\w+)"
@@ -511,7 +521,7 @@ app!=usage_app
       <title>Search errors/warnings</title>
       <table>
         <search>
-          <query>index=_audit sourcetype=audittrail tag=error (savedsearch_name="$search_name$" AND savedsearch_name!="search*")
+          <query>index=_audit sourcetype=audittrail has_error_warn="true" tag=error (savedsearch_name="$search_name$" AND savedsearch_name!="search*")
 app!=usage_app has_error_warn=true
 |stats count as error_count by savedsearch_name
 | eval gen_errors = if(error_count&gt;0,"Warnings","OK")</query>
@@ -606,12 +616,6 @@ app!=usage_app has_error_warn=true
       <title>Errors list (24 hours)</title>
       <event>
         <search>
-          <query>index=_* source=*mlspl.log  | rex field=_raw "PID\s(?&lt;pid&gt;\w+)"
-| transaction pid maxspan=40s
-| search ERROR $model_name$</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
-          <sampleRatio>1</sampleRatio>
           <progress>
             <condition match="'job.resultCount' &gt; 0">
               <set token="error_list_panel_show">true</set>
@@ -620,18 +624,26 @@ app!=usage_app has_error_warn=true
               <unset token="error_list_panel_show"></unset>
             </condition>
           </progress>
+          <query>index=_* source=*mlspl.log  | rex field=_raw "PID\s(?&lt;pid&gt;\w+)"
+| transaction pid maxspan=40s
+| search ERROR $model_name$
+| highlight $model_name$
+| highlight "*invalid model*" "*not found*"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
         </search>
         <option name="count">5</option>
         <option name="list.drilldown">none</option>
         <option name="list.wrap">1</option>
         <option name="maxLines">5</option>
-        <option name="raw.drilldown">full</option>
+        <option name="raw.drilldown">none</option>
         <option name="refresh.display">progressbar</option>
         <option name="rowNumbers">0</option>
         <option name="table.drilldown">all</option>
         <option name="table.sortDirection">asc</option>
         <option name="table.wrap">1</option>
-        <option name="type">list</option>
+        <option name="type">raw</option>
       </event>
     </panel>
   </row>
