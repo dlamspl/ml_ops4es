@@ -1,5 +1,5 @@
 # ml_ops4es
-Dashboards for operationalizing ES ML capabilities. Download beta app from ![here](https://github.com/dlamspl/ml_ops4es/releases/tag/beta)
+Dashboards for operationalizing ES ML capabilities. Download beta app from [here](https://github.com/dlamspl/ml_ops4es/releases/tag/beta)
 
 
 # ML Discovery
